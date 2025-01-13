@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	roomspurger "github.com/erdnaxeli/synapse-cleaner/rooms_purger"
+	synapsecleaner "github.com/erdnaxeli/synapse-cleaner"
 )
 
 type Room struct {
@@ -28,7 +28,7 @@ func main() {
 	user := os.Args[3]
 	server := os.Args[5]
 
-	purger := roomspurger.NewRoomsPurger(accessToken, user, server)
+	purger := synapsecleaner.NewRoomsPurger(accessToken, user, server)
 	err := purger.Do()
 	if err != nil {
 		fmt.Print("Error: ", err)

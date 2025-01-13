@@ -1,4 +1,4 @@
-package roomspurger
+package synapsecleaner
 
 import (
 	"bufio"
@@ -38,12 +38,6 @@ type deleteRoomResponse struct {
 type deleteStatusResponse struct {
 	Status string `json:"status"`
 	Error  string `json:"error"`
-}
-
-type Room struct {
-	CanonicalAlias string
-	Id             string
-	Name           string
 }
 
 type RoomsPurger struct {
@@ -135,14 +129,16 @@ func (rp RoomsPurger) deleteRooms(roomsToDelete []Room) error {
 
 	state := DeletionScreenState{}
 	for idx, room := range roomsToDelete {
-		state.rooms = append(state.rooms, &DeletionScreenRoomState{
-			started:  false,
-			err:      nil,
-			finished: false,
-			index:    idx,
-			done:     false,
-			room:     room,
-		},
+		state.rooms = append(
+			state.rooms,
+			&DeletionScreenRoomState{
+				started:  false,
+				err:      nil,
+				finished: false,
+				index:    idx,
+				done:     false,
+				room:     room,
+			},
 		)
 	}
 
