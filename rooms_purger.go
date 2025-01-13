@@ -2,11 +2,7 @@ package synapsecleaner
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -41,23 +37,19 @@ type deleteStatusResponse struct {
 }
 
 type RoomsPurger struct {
-	accessToken string
-	client      *http.Client
-	user        string
-	server      string
+	user string
+	api  SynapseAPI
 }
 
 func NewRoomsPurger(accessToken string, user string, server string) RoomsPurger {
 	return RoomsPurger{
-		accessToken: accessToken,
-		client:      &http.Client{},
-		server:      server,
-		user:        user,
+		api:  NewSynapseAPI(accessToken, server),
+		user: user,
 	}
 }
 
 func (rp RoomsPurger) Do() error {
-	userRooms, err := rp.getUsersRooms()
+	userRooms, err := rp.api.getUsersRooms(rp.user)
 	if err != nil {
 		return err
 	}
@@ -67,7 +59,7 @@ func (rp RoomsPurger) Do() error {
 		return nil
 	}
 
-	rooms, err := rp.getAllRooms()
+	rooms, err := rp.api.getAllRooms()
 	if err != nil {
 		return err
 	}
@@ -312,39 +304,14 @@ func getRoomDisplayName(room Room, width int) (string, int) {
 }
 
 func (rp RoomsPurger) deleteRoom(roomId string) error {
-	req, err := http.NewRequest(
-		"DELETE",
-		fmt.Sprintf("%s/_synapse/admin/v2/rooms/%s", rp.server, roomId),
-		bytes.NewBuffer([]byte(`{"purge": true}`)),
-	)
+	payload, err := rp.api.deleteRoom(roomId)
 	if err != nil {
 		return err
 	}
-
-	resp, err := rp.sendQuery(req)
-	if err != nil {
-		return err
-	}
-
-	payload := deleteRoomResponse{}
-	err = json.Unmarshal(resp, &payload)
-	if err != nil {
-		return err
-	}
+	deleteId := payload.DeleteId
 
 	for {
-		req, err := http.NewRequest("GET", fmt.Sprintf("%s/_synapse/admin/v2/rooms/delete_status/%s", rp.server, payload.DeleteId), nil)
-		if err != nil {
-			return err
-		}
-
-		resp, err := rp.sendQuery(req)
-		if err != nil {
-			return err
-		}
-
-		payload := deleteStatusResponse{}
-		err = json.Unmarshal(resp, &payload)
+		payload, err := rp.api.getDeleteStatus(deleteId)
 		if err != nil {
 			return err
 		}
@@ -357,79 +324,4 @@ func (rp RoomsPurger) deleteRoom(roomId string) error {
 
 		time.Sleep(2 * time.Second)
 	}
-}
-
-func (rp RoomsPurger) getUsersRooms() ([]string, error) {
-	fmt.Print("Fetching user's rooms... ")
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/_synapse/admin/v1/users/%s/joined_rooms", rp.server, rp.user), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := rp.sendQuery(req)
-	if err != nil {
-		return nil, err
-	}
-
-	var userRooms joinedRoomsResponse
-	err = json.Unmarshal(resp, &userRooms)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Print("OK\n")
-
-	return userRooms.JoinedRooms, nil
-}
-
-func (rp RoomsPurger) getAllRooms() ([]Room, error) {
-	fmt.Print("Get all rooms in the server... ")
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/_synapse/admin/v1/rooms?limit=100000", rp.server), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := rp.sendQuery(req)
-	if err != nil {
-		return nil, err
-	}
-
-	var roomsPayload roomsResponse
-	err = json.Unmarshal(resp, &roomsPayload)
-	if err != nil {
-		return nil, err
-	}
-
-	rooms := []Room{}
-	for _, room := range roomsPayload.Rooms {
-		rooms = append(rooms, Room{
-			CanonicalAlias: room.CanonicalAlias,
-			Id:             room.RoomId,
-			Name:           room.Name,
-		})
-	}
-
-	fmt.Print("OK\n")
-
-	return rooms, nil
-}
-
-func (rp RoomsPurger) sendQuery(req *http.Request) ([]byte, error) {
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", rp.accessToken))
-	resp, err := rp.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("response status code is %d: %s", resp.StatusCode, resp.Status)
-	}
-
-	content, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return content, nil
 }
