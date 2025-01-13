@@ -194,18 +194,19 @@ func (rp RoomsPurger) deleteRooms(roomsToDelete []Room) error {
 
 			if roomState.started {
 				if line < currentLine {
-					fmt.Printf("\033[%dF", currentLine-line)
-					currentLine = line
+					for line < currentLine {
+						fmt.Print("\033M\033[0G")
+						currentLine--
+					}
 				} else if line > currentLine {
-					if line > lines {
-						// Job are played in order, so if all goes well the diff is only one
+					for line > currentLine {
 						fmt.Print("\n")
-						lines++
-					} else {
-						fmt.Printf("\033[%dE", line-currentLine)
+						currentLine++
 					}
 
-					currentLine = line
+					if currentLine > lines {
+						lines = currentLine
+					}
 				}
 
 				roomDisplayName, columnsCount := getRoomDisplayName(roomState.room, lineMaxLen)
@@ -228,7 +229,7 @@ func (rp RoomsPurger) deleteRooms(roomsToDelete []Room) error {
 					roomsDone++
 					errors[roomState.room] = roomState.err
 				} else {
-					duration := fmt.Sprintf(" %.0fs", time.Since(roomState.startedAt).Seconds())
+					duration := fmt.Sprintf(" %s", time.Since(roomState.startedAt).Round(time.Second))
 
 					for i := columnsCount; i < columns-len(duration); i++ {
 						fmt.Print(" ")
