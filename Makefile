@@ -1,7 +1,7 @@
 all: build
 
 build:
-	go build ./cmd/synapse-cleaner.go
+	go build -o synapse-cleaner ./cmd
 
 style:
 	go fmt ./...
