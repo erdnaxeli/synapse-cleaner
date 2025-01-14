@@ -27,15 +27,6 @@ type roomsResponse struct {
 	Rooms []roomsResponseRoom `json:"rooms"`
 }
 
-type deleteRoomResponse struct {
-	DeleteId string `json:"delete_id"`
-}
-
-type deleteStatusResponse struct {
-	Status string `json:"status"`
-	Error  string `json:"error"`
-}
-
 type RoomsPurger struct {
 	user string
 	api  SynapseAPI
@@ -49,7 +40,7 @@ func NewRoomsPurger(accessToken string, user string, server string) RoomsPurger 
 }
 
 func (rp RoomsPurger) Do() error {
-	userRooms, err := rp.api.getUsersRooms(rp.user)
+	userRooms, err := rp.api.GetUsersRooms(rp.user)
 	if err != nil {
 		return err
 	}
@@ -59,7 +50,7 @@ func (rp RoomsPurger) Do() error {
 		return nil
 	}
 
-	rooms, err := rp.api.getAllRooms()
+	rooms, err := rp.api.GetAllRooms()
 	if err != nil {
 		return err
 	}
@@ -76,6 +67,11 @@ func (rp RoomsPurger) Do() error {
 		if !userRoomsIndexed[room.Id] {
 			roomsToDelete = append(roomsToDelete, room)
 		}
+	}
+
+	if len(roomsToDelete) == 0 {
+		fmt.Print("No rooms to delete.")
+		os.Exit(0)
 	}
 
 	fmt.Printf("\nYou are about to *PERMANENTLY* delete %d rooms, do you want to proceed?\nAnything else than \"yes\" will stop the process: ", len(roomsToDelete))
@@ -115,6 +111,19 @@ type DeletionScreenState struct {
 	rooms []*DeletionScreenRoomState
 }
 
+type RoomLine struct {
+	id      string
+	content string
+}
+
+func (rl RoomLine) Id() string {
+	return rl.id
+}
+
+func (rl RoomLine) String() string {
+	return rl.content
+}
+
 func (rp RoomsPurger) deleteRooms(roomsToDelete []Room) error {
 	fmt.Printf("Deleting %d rooms...\n\n", len(roomsToDelete))
 	start := time.Now()
@@ -135,7 +144,7 @@ func (rp RoomsPurger) deleteRooms(roomsToDelete []Room) error {
 	}
 
 	group := errgroup.Group{}
-	group.SetLimit(10)
+	group.SetLimit(20)
 
 	go func() {
 		for _, roomState := range state.rooms {
@@ -157,18 +166,20 @@ func (rp RoomsPurger) deleteRooms(roomsToDelete []Room) error {
 		}
 	}()
 
-	currentLine := 0
-	lines := 0
+	jobsDone := 0
+	errors := map[Room]error{}
+
 	columns, _, err := term.GetSize(0)
 	if err != nil {
 		fmt.Print("Err: ", err)
 	}
 
-	fmt.Print("\n\n")
-
 	lineMaxLen := columns - 10
-	roomsDone := 0
-	errors := map[Room]error{}
+
+	printer, err := NewLinesPrinterWithFooter(2)
+	if err != nil {
+		return err
+	}
 
 	for {
 		done := true
@@ -183,87 +194,59 @@ func (rp RoomsPurger) deleteRooms(roomsToDelete []Room) error {
 			break
 		}
 
-		fmt.Print("\033[2F")
-
-		roomsDone = 0
-		for line, roomState := range state.rooms {
+		for _, roomState := range state.rooms {
 			if roomState.done {
-				roomsDone++
 				continue
 			}
 
 			if roomState.started {
-				if line < currentLine {
-					for line < currentLine {
-						fmt.Print("\033M\033[0G")
-						currentLine--
-					}
-				} else if line > currentLine {
-					for line > currentLine {
-						fmt.Print("\n")
-						currentLine++
-					}
-
-					if currentLine > lines {
-						lines = currentLine
-					}
-				}
-
 				roomDisplayName, columnsCount := getRoomDisplayName(roomState.room, lineMaxLen)
-				fmt.Print(roomDisplayName)
+				b := strings.Builder{}
+				fmt.Fprint(&b, roomDisplayName)
 				if roomState.finished {
 					for i := columnsCount; i < columns-8; i++ {
-						fmt.Print(" ")
+						fmt.Fprint(&b, " ")
 					}
 
-					fmt.Print(" DELETED")
+					fmt.Fprint(&b, " DELETED")
 					roomState.done = true
-					roomsDone++
+					jobsDone++
 				} else if roomState.err != nil {
 					for i := columnsCount; i < columns-6; i++ {
-						fmt.Print(" ")
+						fmt.Fprint(&b, " ")
 					}
 
-					fmt.Print(" ERROR")
+					fmt.Fprint(&b, " ERROR")
 					roomState.done = true
-					roomsDone++
+					jobsDone++
 					errors[roomState.room] = roomState.err
 				} else {
 					duration := fmt.Sprintf(" %s", time.Since(roomState.startedAt).Round(time.Second))
 
 					for i := columnsCount; i < columns-len(duration); i++ {
-						fmt.Print(" ")
+						fmt.Fprint(&b, " ")
 					}
 
-					fmt.Print(duration)
+					fmt.Fprint(&b, duration)
 				}
+
+				printer.Print(RoomLine{id: roomState.room.Id, content: b.String()})
 			}
 		}
 
-		// We go to the bottom of jobs lines
-		if currentLine < lines {
-			fmt.Printf("\033[%dE", lines-currentLine)
-			currentLine = lines
-		}
-
-		// We erase the next two lines.
-		fmt.Print("\n\033[K")
-		fmt.Print("\n\033[K")
-
-		// And we write the counter
-		counter := fmt.Sprintf("%d / %d (%s)", roomsDone, len(state.rooms), time.Since(start).Round(time.Second))
+		// We write the counter
+		counter := fmt.Sprintf("%d / %d (%s)", jobsDone, len(state.rooms), time.Since(start).Round(time.Second))
 		b := strings.Builder{}
-		for i := 0; i < columns-len(counter); i++ {
-			fmt.Fprint(&b, " ")
-		}
-
+		fmt.Fprintln(&b)
+		fmt.Fprint(&b, strings.Repeat(" ", columns-len(counter)))
 		fmt.Fprint(&b, counter)
-		fmt.Print(b.String())
+		printer.PrintFooter(b.String())
 
 		time.Sleep(1 * time.Second)
 	}
 
-	fmt.Print()
+	printer.Exit()
+	fmt.Println()
 
 	if len(errors) > 0 {
 		fmt.Printf("There was %d errors during the process:\n\n", len(errors))
@@ -305,14 +288,14 @@ func getRoomDisplayName(room Room, width int) (string, int) {
 }
 
 func (rp RoomsPurger) deleteRoom(roomId string) error {
-	payload, err := rp.api.deleteRoom(roomId)
+	payload, err := rp.api.DeleteRoom(roomId)
 	if err != nil {
 		return err
 	}
 	deleteId := payload.DeleteId
 
 	for {
-		payload, err := rp.api.getDeleteStatus(deleteId)
+		payload, err := rp.api.GetDeleteStatus(deleteId)
 		if err != nil {
 			return err
 		}

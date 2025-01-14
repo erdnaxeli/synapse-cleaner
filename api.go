@@ -23,7 +23,16 @@ func NewSynapseAPI(accessToken string, server string) SynapseAPI {
 	}
 }
 
-func (api SynapseAPI) getUsersRooms(user string) ([]string, error) {
+type DeleteRoomResponse struct {
+	DeleteId string `json:"delete_id"`
+}
+
+type DeleteStatusResponse struct {
+	Status string `json:"status"`
+	Error  string `json:"error"`
+}
+
+func (api SynapseAPI) GetUsersRooms(user string) ([]string, error) {
 	fmt.Print("Fetching user's rooms... ")
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/_synapse/admin/v1/users/%s/joined_rooms", api.server, user), nil)
 	if err != nil {
@@ -46,7 +55,7 @@ func (api SynapseAPI) getUsersRooms(user string) ([]string, error) {
 	return userRooms.JoinedRooms, nil
 }
 
-func (api SynapseAPI) getAllRooms() ([]Room, error) {
+func (api SynapseAPI) GetAllRooms() ([]Room, error) {
 	fmt.Print("Get all rooms in the server... ")
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/_synapse/admin/v1/rooms?limit=100000", api.server), nil)
 	if err != nil {
@@ -78,8 +87,8 @@ func (api SynapseAPI) getAllRooms() ([]Room, error) {
 	return rooms, nil
 }
 
-func (api SynapseAPI) deleteRoom(roomId string) (deleteRoomResponse, error) {
-	payload := deleteRoomResponse{}
+func (api SynapseAPI) DeleteRoom(roomId string) (DeleteRoomResponse, error) {
+	payload := DeleteRoomResponse{}
 
 	req, err := http.NewRequest(
 		"DELETE",
@@ -103,8 +112,8 @@ func (api SynapseAPI) deleteRoom(roomId string) (deleteRoomResponse, error) {
 	return payload, nil
 }
 
-func (api SynapseAPI) getDeleteStatus(deleteId string) (deleteStatusResponse, error) {
-	payload := deleteStatusResponse{}
+func (api SynapseAPI) GetDeleteStatus(deleteId string) (DeleteStatusResponse, error) {
+	payload := DeleteStatusResponse{}
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/_synapse/admin/v2/rooms/delete_status/%s", api.server, deleteId), nil)
 	if err != nil {
