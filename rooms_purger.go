@@ -55,19 +55,12 @@ func (rp RoomsPurger) Do() error {
 		return err
 	}
 
-	userRoomsIndexed := make(map[string]bool, len(userRooms))
-	for _, room := range userRooms {
-		userRoomsIndexed[room] = true
-	}
-
-	fmt.Printf("The user belongs to %d rooms, the server has %d rooms.\n", len(userRoomsIndexed), len(rooms))
-
-	roomsToDelete := make([]Room, 0, len(rooms)-len(userRoomsIndexed))
-	for _, room := range rooms {
-		if !userRoomsIndexed[room.Id] {
-			roomsToDelete = append(roomsToDelete, room)
-		}
-	}
+	roomsToDelete := DiffSlicesFunc(
+		rooms,
+		userRooms,
+		func(r Room) string { return r.Id },
+		func(roomId string) string { return roomId },
+	)
 
 	if len(roomsToDelete) == 0 {
 		fmt.Print("No rooms to delete.")
