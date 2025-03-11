@@ -55,6 +55,7 @@ func (rp RoomsPurger) Do() error {
 		return err
 	}
 
+	fmt.Printf("The user belongs to %d rooms, the server has %d rooms\n", len(userRooms), len(rooms))
 	roomsToDelete := DiffSlicesFunc(
 		rooms,
 		userRooms,
